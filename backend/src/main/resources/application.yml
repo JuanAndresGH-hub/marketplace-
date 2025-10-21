@@ -1,0 +1,16 @@
+spring:
+  r2dbc:
+    url: r2dbc:postgresql://db:5432/dulcesdb   # hostname del servicio Postgres en docker-compose
+    username: postgres
+    password: admin
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
