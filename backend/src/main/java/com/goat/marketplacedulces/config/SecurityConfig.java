@@ -1,61 +1,74 @@
 package com.goat.marketplacedulces.config;
 
-import com.goat.marketplacedulces.repository.UsuarioRepository;
-import com.goat.marketplacedulces.service.JwtService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
-import org.springframework.security.config.Customizer;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.method.configuration.EnableReactiveMethodSecurity;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.SecurityWebFiltersOrder;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
-import org.springframework.security.core.userdetails.ReactiveUserDetailsService;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.server.SecurityWebFilterChain;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.reactive.CorsWebFilter;
+import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
 import reactor.core.publisher.Mono;
 
+import java.util.List;
+
+@RequiredArgsConstructor
 @Configuration
 @EnableWebFluxSecurity
 @EnableReactiveMethodSecurity
 public class SecurityConfig {
 
-    @Bean
-    public PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
+    // Tu filtro que mete la Authentication desde el JWT
+    private final JwtAuthFilter jwtAuthFilter;
 
+    // Necesario para registrar usuarios / verificar contraseñas
     @Bean
-    public ReactiveUserDetailsService userDetailsService(UsuarioRepository repo) {
-        return username -> repo.findByUsername(username)
-                .switchIfEmpty(Mono.error(new UsernameNotFoundException("Usuario no encontrado")))
-                .map(u -> User.withUsername(u.getUsername())
-                        .password(u.getPassword())
-                        .roles(u.getRol()) // asegúrate de tener getRol() en tu entidad
-                        .disabled(u.getEnabled() != null && !u.getEnabled())
-                        .build());
-    }
-
-    // expone el filtro como bean (si tu JwtAuthFilter no lleva @Component)
-    @Bean
-    public JwtAuthFilter jwtAuthFilter(JwtService jwtService, ReactiveUserDetailsService uds) {
-        return new JwtAuthFilter(jwtService, uds);
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
     }
 
     @Bean
-    public SecurityWebFilterChain chain(ServerHttpSecurity http, JwtAuthFilter jwtAuthFilter) {
-        return http
+    public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
+        http
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
-                .cors(Customizer.withDefaults())
+                .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable) // 👈 evita el popup del navegador
+                .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
+                .logout(ServerHttpSecurity.LogoutSpec::disable)
                 .authorizeExchange(ex -> ex
-                        .pathMatchers(HttpMethod.POST, "/auth/**").permitAll()
-                        .pathMatchers("/actuator/health/**", "/actuator/info").permitAll()
+                        .pathMatchers("/auth/**", "/actuator/**", "/v3/api-docs/**", "/swagger-ui/**").permitAll()
+                        // ajusta si quieres público /productos:
+                        // .pathMatchers(HttpMethod.GET, "/productos/**").permitAll()
                         .anyExchange().authenticated()
                 )
-                .addFilterAt(jwtAuthFilter, SecurityWebFiltersOrder.AUTHENTICATION)
-                .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
-                .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
-                .build();
+                // devuelve 401 sin cabecera WWW-Authenticate: Basic (así no sale el modal del browser)
+                .exceptionHandling(ex -> ex.authenticationEntryPoint((swe, e) -> {
+                    swe.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+                    swe.getResponse().getHeaders().remove(HttpHeaders.WWW_AUTHENTICATE);
+                    return Mono.empty();
+                }))
+                .addFilterAt(jwtAuthFilter, SecurityWebFiltersOrder.AUTHENTICATION);
+
+        return http.build();
+    }
+
+    // CORS para el frontend
+    @Bean
+    public CorsWebFilter corsWebFilter() {
+        CorsConfiguration cfg = new CorsConfiguration();
+        cfg.setAllowedOrigins(List.of("http://localhost:5173", "http://localhost", "http://127.0.0.1"));
+        cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        cfg.setAllowedHeaders(List.of("*"));
+        cfg.setAllowCredentials(true);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", cfg);
+        return new CorsWebFilter(source);
     }
 }

@@ -15,3 +15,4 @@ docker compose up -d --build
 - `frontend/vite.config.js` proxyea `/api` → `http://localhost:8080`
 - `.env` opcional: `VITE_API_URL=/api`
 # marketplace-
+# marketplace-prueba

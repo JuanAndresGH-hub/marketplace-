@@ -16,12 +16,15 @@ import java.security.Principal;
 @RequestMapping("/carrito")
 @RequiredArgsConstructor
 public class CarritoController {
+
     private final CarritoService carritoService;
 
-    // Soporta: POST /carrito/agregar?productoId=1&cantidad=2
-    @PostMapping("/agregar")
-    public Mono<Carrito> agregarQuery(@RequestParam Long productoId,
-                                      @RequestParam(required = false) Integer cantidad,
+    // POST /carrito/agregar?productoId=1&cantidad=2
+    // Usamos "params" para que esta ruta se elija cuando venga el query param,
+    // y anotamos los nombres explícitamente.
+    @PostMapping(value = "/agregar", params = { "productoId" })
+    public Mono<Carrito> agregarQuery(@RequestParam("productoId") Long productoId,
+                                      @RequestParam(name = "cantidad", defaultValue = "1") Integer cantidad,
                                       Principal principal) {
         return carritoService.agregar(principal.getName(), productoId, cantidad);
     }
@@ -29,7 +32,8 @@ public class CarritoController {
     // Alternativa JSON: { "productoId": 1, "cantidad": 2 }
     @PostMapping(path = "/agregar", consumes = MediaType.APPLICATION_JSON_VALUE)
     public Mono<Carrito> agregarBody(@RequestBody AddItem body, Principal principal) {
-        return carritoService.agregar(principal.getName(), body.getProductoId(), body.getCantidad());
+        Integer cant = (body.getCantidad() == null ? 1 : body.getCantidad());
+        return carritoService.agregar(principal.getName(), body.getProductoId(), cant);
     }
 
     @GetMapping
@@ -38,7 +42,7 @@ public class CarritoController {
     }
 
     @DeleteMapping("/{id}")
-    public Mono<Void> eliminar(@PathVariable Long id) {
+    public Mono<Void> eliminar(@PathVariable("id") Long id) {
         return carritoService.eliminar(id);
     }
 
